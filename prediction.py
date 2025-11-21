@@ -12,20 +12,23 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# CRITICAL: Add CORS middleware BEFORE any routes
+# This must be one of the first things after creating the app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],  # Allows all origins - necessary for Flutter
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 # Load model and scaler at startup
 try:
     model = joblib.load('best_model.pkl')
     scaler = joblib.load('scaler.pkl')
-    print("Model and scaler loaded successfully")
+    print("✓ Model and scaler loaded successfully")
 except Exception as e:
     print(f"Error loading model: {e}")
     model = None
@@ -102,7 +105,6 @@ class PredictionOutput(BaseModel):
     model_info: dict
     
     class Config:
-        protected_namespaces = ()
         json_schema_extra = {
             "example": {
                 "predicted_school_life_expectancy": 12.45,
@@ -134,7 +136,8 @@ def read_root():
             "GET /docs": "Interactive API documentation (Swagger UI)",
             "GET /redoc": "Alternative API documentation"
         },
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "cors_enabled": True
     }
 
 # Health check endpoint
@@ -146,7 +149,8 @@ def health_check():
     return {
         "status": "healthy",
         "model_loaded": model is not None,
-        "scaler_loaded": scaler is not None
+        "scaler_loaded": scaler is not None,
+        "cors_enabled": True
     }
 
 # Prediction endpoint
@@ -206,6 +210,12 @@ def predict(input_data: PredictionInput):
             status_code=500,
             detail=f"Prediction error: {str(e)}"
         )
+
+# OPTIONS endpoint for CORS preflight (explicit handler)
+@app.options("/predict")
+async def predict_options():
+    """Handle OPTIONS request for CORS preflight"""
+    return {"message": "OK"}
 
 # Example endpoint to get valid input ranges
 @app.get("/input-ranges")
